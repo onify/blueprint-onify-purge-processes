@@ -141,7 +141,7 @@ if (environment.output.purgeSettings.status.includes(environment.variables.conte
         <camunda:inputOutput>
           <camunda:inputParameter name="process">
             <camunda:map>
-              <camunda:entry key="tag">purge:48:Completed</camunda:entry>
+              <camunda:entry key="tag">purge:1:completed</camunda:entry>
               <camunda:entry key="tag">purge</camunda:entry>
             </camunda:map>
           </camunda:inputParameter>
@@ -156,7 +156,7 @@ if (environment.output.purgeSettings.status.includes(environment.variables.conte
     </bpmn:textAnnotation>
     <bpmn:association id="Association_1kzif9r" sourceRef="start" targetRef="TextAnnotation_07z7a91" />
     <bpmn:textAnnotation id="TextAnnotation_0txjdf0">
-      <bpmn:text>Purge itself after 48 hours</bpmn:text>
+      <bpmn:text>Purge itself after 1 hour (if completed)</bpmn:text>
     </bpmn:textAnnotation>
     <bpmn:association id="Association_17ufk5c" sourceRef="setToBePurged" targetRef="TextAnnotation_0txjdf0" />
   </bpmn:process>
