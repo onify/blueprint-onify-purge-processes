@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" xmlns:bioc="http://bpmn.io/schema/bpmn/biocolor/1.0" xmlns:color="http://www.omg.org/spec/BPMN/non-normative/color/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_146bnik" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.17.0" modeler:executionPlatform="Camunda Platform" modeler:executionPlatformVersion="7.20.0">
+  <bpmn:process id="Process_03o34dt" isExecutable="true" camunda:historyTimeToLive="180">
+    <bpmn:startEvent id="start" name="Start">
+      <bpmn:outgoing>Flow_059x372</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="getWorkflows" name="Get workflows">
+      <bpmn:extensionElements>
+        <camunda:inputOutput>
+          <camunda:outputParameter name="workflows">${content.output.body.records}</camunda:outputParameter>
+        </camunda:inputOutput>
+        <camunda:connector>
+          <camunda:inputOutput>
+            <camunda:inputParameter name="url">/admin/workflows?pagesize=1000&amp;query=tag:*</camunda:inputParameter>
+          </camunda:inputOutput>
+          <camunda:connectorId>onifyApiRequest</camunda:connectorId>
+        </camunda:connector>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_059x372</bpmn:incoming>
+      <bpmn:outgoing>Flow_1jjs1u5</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_059x372" sourceRef="start" targetRef="getWorkflows" />
+    <bpmn:endEvent id="end" name="End">
+      <bpmn:incoming>Flow_0cy4bbo</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_1jjs1u5" sourceRef="getWorkflows" targetRef="loopWorkflows" />
+    <bpmn:subProcess id="loopWorkflows" name="Loop workflows">
+      <bpmn:incoming>Flow_1jjs1u5</bpmn:incoming>
+      <bpmn:outgoing>Flow_0cy4bbo</bpmn:outgoing>
+      <bpmn:multiInstanceLoopCharacteristics isSequential="true" camunda:collection="${environment.output.workflows}" camunda:elementVariable="workflow" />
+      <bpmn:startEvent id="Event_136ufim">
+        <bpmn:outgoing>Flow_0xy7yqi</bpmn:outgoing>
+      </bpmn:startEvent>
+      <bpmn:sequenceFlow id="Flow_0xy7yqi" sourceRef="Event_136ufim" targetRef="generateScript" />
+      <bpmn:endEvent id="Event_100xxm3">
+        <bpmn:incoming>Flow_1yxfv1q</bpmn:incoming>
+      </bpmn:endEvent>
+      <bpmn:sequenceFlow id="Flow_0ywl4jh" sourceRef="generateScript" targetRef="updateProcesses" />
+      <bpmn:scriptTask id="generateScript" name="Generate painless script" scriptFormat="js" camunda:resultVariable="painlessScript">
+        <bpmn:incoming>Flow_0xy7yqi</bpmn:incoming>
+        <bpmn:outgoing>Flow_0ywl4jh</bpmn:outgoing>
+        <bpmn:script>const strTags = environment.variables.content.workflow.tag.map(s =&gt; `"${s}"`).join(", ");
+const painlessScript = `
+
+if (ctx._source.tag == null) {
+  ctx._source.tag = new ArrayList();
+}
+String[] tags = new String[] {${strTags}};
+ctx._source.tag.addAll(Arrays.asList(tags)); 
+ctx._source.tag = ctx._source.tag.stream().distinct().collect(Collectors.toList());
+
+`;
+next(null, painlessScript);</bpmn:script>
+      </bpmn:scriptTask>
+      <bpmn:serviceTask id="updateProcesses" name="Update processes with tags">
+        <bpmn:extensionElements>
+          <camunda:connector>
+            <camunda:inputOutput>
+              <camunda:inputParameter name="url">/tools/elastic/query</camunda:inputParameter>
+              <camunda:inputParameter name="method">POST</camunda:inputParameter>
+              <camunda:inputParameter name="query">
+                <camunda:map>
+                  <camunda:entry key="parameters">/onify-process/_update_by_query?conflicts=proceed</camunda:entry>
+                </camunda:map>
+              </camunda:inputParameter>
+              <camunda:inputParameter name="payload">
+                <camunda:script scriptFormat="js">const payload = {
+  "query": {
+    "bool": {
+      "must": [
+        {
+          "term": {
+            "workflow": environment.variables.content.workflow.key
+          }
+        }
+      ]
+    }
+  },
+  "script": {
+    "source": environment.output.painlessScript,
+    "lang": "painless"
+  }
+};
+next(null, payload);</camunda:script>
+              </camunda:inputParameter>
+            </camunda:inputOutput>
+            <camunda:connectorId>onifyElevatedApiRequest</camunda:connectorId>
+          </camunda:connector>
+          <camunda:executionListener event="end">
+            <camunda:script scriptFormat="js">const strTags = environment.variables.content.workflow.tag.map(s =&gt; `"${s}"`).join(", ");
+console.log(`DEBUG: Copy tags (${strTags}) from workflow (${environment.variables.content.workflow.key}) to processes. Done updating ${content.output.body.updated} processes.`);
+next();</camunda:script>
+          </camunda:executionListener>
+        </bpmn:extensionElements>
+        <bpmn:incoming>Flow_0ywl4jh</bpmn:incoming>
+        <bpmn:outgoing>Flow_1yxfv1q</bpmn:outgoing>
+      </bpmn:serviceTask>
+      <bpmn:sequenceFlow id="Flow_1yxfv1q" sourceRef="updateProcesses" targetRef="Event_100xxm3" />
+      <bpmn:textAnnotation id="TextAnnotation_1awingn">
+        <bpmn:text>Update index prefix</bpmn:text>
+      </bpmn:textAnnotation>
+      <bpmn:association id="Association_00u7ji4" sourceRef="updateProcesses" targetRef="TextAnnotation_1awingn" />
+    </bpmn:subProcess>
+    <bpmn:sequenceFlow id="Flow_0cy4bbo" sourceRef="loopWorkflows" targetRef="end" />
+    <bpmn:textAnnotation id="TextAnnotation_1e7zbd8">
+      <bpmn:text>Update query in url to filter workflows</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Association_1ihuinz" sourceRef="getWorkflows" targetRef="TextAnnotation_1e7zbd8" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="Process_03o34dt">
+      <bpmndi:BPMNShape id="TextAnnotation_1e7zbd8_di" bpmnElement="TextAnnotation_1e7zbd8">
+        <dc:Bounds x="190" y="120" width="230" height="30" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="start" bioc:stroke="#205022" bioc:fill="#c8e6c9" color:background-color="#c8e6c9" color:border-color="#205022">
+        <dc:Bounds x="152" y="212" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="158" y="255" width="25" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_0t1oqzv_di" bpmnElement="getWorkflows">
+        <dc:Bounds x="270" y="190" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_02f891h_di" bpmnElement="end" bioc:stroke="#831311" bioc:fill="#ffcdd2" color:background-color="#ffcdd2" color:border-color="#831311">
+        <dc:Bounds x="1162" y="212" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1170" y="255" width="20" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1i5e80d_di" bpmnElement="loopWorkflows" isExpanded="true">
+        <dc:Bounds x="470" y="80" width="610" height="250" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TextAnnotation_1awingn_di" bpmnElement="TextAnnotation_1awingn">
+        <dc:Bounds x="890" y="130" width="128" height="30" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_136ufim_di" bpmnElement="Event_136ufim">
+        <dc:Bounds x="510" y="212" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1l46v5i_di" bpmnElement="generateScript">
+        <dc:Bounds x="600" y="190" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_100xxm3_di" bpmnElement="Event_100xxm3">
+        <dc:Bounds x="992" y="212" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_0m4v8ki" bpmnElement="updateProcesses">
+        <dc:Bounds x="800" y="190" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Association_00u7ji4_di" bpmnElement="Association_00u7ji4">
+        <di:waypoint x="892" y="190" />
+        <di:waypoint x="924" y="160" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0xy7yqi_di" bpmnElement="Flow_0xy7yqi">
+        <di:waypoint x="546" y="230" />
+        <di:waypoint x="600" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0ywl4jh_di" bpmnElement="Flow_0ywl4jh">
+        <di:waypoint x="700" y="230" />
+        <di:waypoint x="800" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1yxfv1q_di" bpmnElement="Flow_1yxfv1q">
+        <di:waypoint x="900" y="230" />
+        <di:waypoint x="992" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Association_1ihuinz_di" bpmnElement="Association_1ihuinz">
+        <di:waypoint x="303" y="190" />
+        <di:waypoint x="285" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_059x372_di" bpmnElement="Flow_059x372">
+        <di:waypoint x="188" y="230" />
+        <di:waypoint x="270" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1jjs1u5_di" bpmnElement="Flow_1jjs1u5">
+        <di:waypoint x="370" y="230" />
+        <di:waypoint x="470" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_0cy4bbo_di" bpmnElement="Flow_0cy4bbo">
+        <di:waypoint x="1080" y="230" />
+        <di:waypoint x="1162" y="230" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
