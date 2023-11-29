@@ -24,6 +24,7 @@ Each process that should be purged needs the following tags:
 * `purge:{hours}:{status}:{type}` - This is the part where you specify when and how a process should be purged. `status` is a list of statuses that is separated with a comma.
 
 > Note: The hours is calculated by the enddate. This means that processes missing enddate will not be purged.
+> Note: Setting `hours` to `0` will purge the process immediately. 
 
 Purge types:
 
@@ -32,11 +33,12 @@ Purge types:
 
 ### Examples 
 
-* `purge:24:Completed` - Full purge process after 24 hours if the status is Completed
-* `purge:1:Completed,Stopped` - Full purge process after 1 hour if the status is Completed or Stopped
-* `purge:168:Stopped` - Full purge process after 1 week if the status is Stopped
-* `purge:2190:Completed,Stopped:full` - Full purge process after 3 months if the status is Completed or Stopped
-* `purge:48:Completed,Stopped:data` - Partial purge process after 48 hours if the status is Completed or Stopped
+* `purge:0:Completed` - Delete the process immediately if the status is Completed
+* `purge:24:Completed` - Delete the process after 24 hours if the status is Completed
+* `purge:1:Completed,Stopped` - Delete the process after 1 hour if the status is Completed or Stopped
+* `purge:168:Stopped` - Delete the process after 1 week if the status is Stopped
+* `purge:2190:Completed,Stopped:full` - Delete the process after 3 months if the status is Completed or Stopped
+* `purge:48:Completed,Stopped:data` - Partial (delete data) purge process after 48 hours if the status is Completed or Stopped
 
 ## Deploy
 

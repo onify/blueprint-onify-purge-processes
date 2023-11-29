@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bioc="http://bpmn.io/schema/bpmn/biocolor/1.0" xmlns:color="http://www.omg.org/spec/BPMN/non-normative/color/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1l06257" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.16.0" modeler:executionPlatform="Camunda Platform" modeler:executionPlatformVersion="7.19.0">
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bioc="http://bpmn.io/schema/bpmn/biocolor/1.0" xmlns:color="http://www.omg.org/spec/BPMN/non-normative/color/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_1l06257" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.17.0" modeler:executionPlatform="Camunda Platform" modeler:executionPlatformVersion="7.19.0">
   <bpmn:process id="onify-purge-processes" name="Purge processes in Onify" isExecutable="true">
     <bpmn:endEvent id="end" name="Finished purging processes">
       <bpmn:extensionElements>
@@ -163,6 +163,10 @@ next();</camunda:script>
           <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="js">if (!environment.variables.content.input.process.enddate || !environment.output.purgeSettings?.timer) {
   next(null, false);
 } 
+
+if (environment.output.purgeSettings.timer == 0) {
+  next(null, true);
+}
 
 const currentDateTime = new Date();
 const hoursDiff = (currentDateTime - new Date(environment.variables.content.input.process.enddate)) / 3600000;
@@ -357,12 +361,6 @@ next();</camunda:script>
         <dc:Bounds x="280" y="300" width="100" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_018jj10_di" bpmnElement="endPurgeProcess" bioc:stroke="#831311" bioc:fill="#ffcdd2" color:background-color="#ffcdd2" color:border-color="#831311">
-        <dc:Bounds x="2332" y="322" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="2314" y="365" width="72" height="27" />
-        </bpmndi:BPMNLabel>
-      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_133813l_di" bpmnElement="loopPurgeTags" isExpanded="true">
         <dc:Bounds x="470" y="80" width="1760" height="550" />
         <bpmndi:BPMNLabel />
@@ -376,6 +374,12 @@ next();</camunda:script>
       <bpmndi:BPMNShape id="BPMNShape_0dxhjnq" bpmnElement="purgeSettings">
         <dc:Bounds x="770" y="200" width="100" height="80" />
         <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_1xnzox0" bpmnElement="endDeleted" bioc:stroke="#831311" bioc:fill="#ffcdd2" color:background-color="#ffcdd2" color:border-color="#831311">
+        <dc:Bounds x="1932" y="222" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1911" y="265" width="80" height="14" />
+        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="BPMNShape_1v5o90k" bpmnElement="Gateway_0bgqho1" isMarkerVisible="true">
         <dc:Bounds x="935" y="215" width="50" height="50" />
@@ -422,12 +426,6 @@ next();</camunda:script>
       <bpmndi:BPMNShape id="BPMNShape_1ri6lom" bpmnElement="Activity_0wepmzg">
         <dc:Bounds x="1900" y="320" width="100" height="80" />
         <bpmndi:BPMNLabel />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="BPMNShape_1xnzox0" bpmnElement="endDeleted" bioc:stroke="#831311" bioc:fill="#ffcdd2" color:background-color="#ffcdd2" color:border-color="#831311">
-        <dc:Bounds x="1932" y="222" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="1911" y="265" width="80" height="14" />
-        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="BPMNShape_05x7xn8" bpmnElement="Event_0fgzkg5">
         <dc:Bounds x="1782" y="222" width="36" height="36" />
@@ -508,6 +506,12 @@ next();</camunda:script>
         <di:waypoint x="1818" y="240" />
         <di:waypoint x="1932" y="240" />
       </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="Event_018jj10_di" bpmnElement="endPurgeProcess" bioc:stroke="#831311" bioc:fill="#ffcdd2" color:background-color="#ffcdd2" color:border-color="#831311">
+        <dc:Bounds x="2332" y="322" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2314" y="365" width="72" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="TextAnnotation_1a86zm9_di" bpmnElement="TextAnnotation_1a86zm9">
         <dc:Bounds x="210" y="110" width="150" height="40" />
         <bpmndi:BPMNLabel />
