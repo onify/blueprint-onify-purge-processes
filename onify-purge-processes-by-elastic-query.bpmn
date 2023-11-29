@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:camunda="http://camunda.org/schema/1.0/bpmn" xmlns:bioc="http://bpmn.io/schema/bpmn/biocolor/1.0" xmlns:color="http://www.omg.org/spec/BPMN/non-normative/color/1.0" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:modeler="http://camunda.org/schema/modeler/1.0" id="Definitions_18kfgw9" targetNamespace="http://bpmn.io/schema/bpmn" exporter="Camunda Modeler" exporterVersion="5.17.0" modeler:executionPlatform="Camunda Platform" modeler:executionPlatformVersion="7.20.0">
+  <bpmn:process id="onify-purge-processes-by-elastic-query" name="Purge processes in Onify by Elastic query" isExecutable="true" camunda:historyTimeToLive="180">
+    <bpmn:startEvent id="StartEvent_1" name="Start">
+      <bpmn:outgoing>Flow_02jrzcg</bpmn:outgoing>
+    </bpmn:startEvent>
+    <bpmn:sequenceFlow id="Flow_02jrzcg" sourceRef="StartEvent_1" targetRef="generateScript" />
+    <bpmn:endEvent id="Event_0nxrkvb" name="End">
+      <bpmn:incoming>Flow_08vgf1v</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:serviceTask id="purgeProcesses" name="Purge processes by query">
+      <bpmn:extensionElements>
+        <camunda:connector>
+          <camunda:inputOutput>
+            <camunda:inputParameter name="url">/tools/elastic/query</camunda:inputParameter>
+            <camunda:inputParameter name="method">POST</camunda:inputParameter>
+            <camunda:inputParameter name="query">
+              <camunda:map>
+                <camunda:entry key="parameters">/dev-process/_update_by_query</camunda:entry>
+              </camunda:map>
+            </camunda:inputParameter>
+            <camunda:inputParameter name="payload">
+              <camunda:script scriptFormat="js">next(null, {
+  query: environment.output.elasticQuery,
+  script: {
+    source: environment.output.painlessScript,
+    lang: "painless"
+  }
+});</camunda:script>
+            </camunda:inputParameter>
+          </camunda:inputOutput>
+          <camunda:connectorId>onifyElevatedApiRequest</camunda:connectorId>
+        </camunda:connector>
+        <camunda:executionListener event="end">
+          <camunda:script scriptFormat="js">console.log(`DEBUG: Purged processes (total = ${content.output.body.total}, updated = ${content.output.body.updated}, deleted = ${content.output.body.deleted}, noops = ${content.output.body.noops}).`);
+next();</camunda:script>
+        </camunda:executionListener>
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_00ztnc5</bpmn:incoming>
+      <bpmn:outgoing>Flow_08vgf1v</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:sequenceFlow id="Flow_08vgf1v" sourceRef="purgeProcesses" targetRef="Event_0nxrkvb" />
+    <bpmn:scriptTask id="generateScript" name="Generate painless script" scriptFormat="js" camunda:resultVariable="painlessScript">
+      <bpmn:incoming>Flow_02jrzcg</bpmn:incoming>
+      <bpmn:outgoing>Flow_1srhrel</bpmn:outgoing>
+      <bpmn:script>const currentDateTimeUTC = new Date().toISOString();
+const painlessScript = `
+String ctxOp = "noop";
+
+ArrayList inputTags = ctx._source.tag;
+ArrayList newTagList = new ArrayList(inputTags);
+
+String inputStatus = ctx._source.status.name;
+
+ZonedDateTime enddate = ZonedDateTime.parse(ctx._source.enddate); 
+ZonedDateTime currentDateTime = ZonedDateTime.parse('${currentDateTimeUTC }');
+
+for (tag in inputTags) {
+  String[] partsTags = tag.splitOnToken(':');
+  String purgeTag = partsTags.length &gt; 0 ? partsTags[0].trim() : "";
+  if (purgeTag.equalsIgnoreCase("purge") &amp;&amp; partsTags.length &gt; 1) {
+    String hours = partsTags.length &gt; 1 ? partsTags[1].trim() : "";
+    String status = partsTags.length &gt; 2 ? partsTags[2].trim() : "";
+    String type = partsTags.length &gt; 3 ? partsTags[3].trim() : "";
+    int hoursInt;
+    try {
+      hoursInt = Integer.parseInt(hours);
+    } catch (NumberFormatException e) {
+      hoursInt = 0;
+    }
+    Duration duration = Duration.between(enddate, currentDateTime);
+    long hoursDiff = duration.toHours();
+    if (hoursDiff &gt;= hoursInt) {
+      String[] partsStatus = status.splitOnToken(",");
+      for (singleStatus in partsStatus) {
+        if (singleStatus.trim().equalsIgnoreCase(inputStatus)) {
+          if (type.equalsIgnoreCase("data")) {
+            if (ctx._source.containsKey('flowstate')) { 
+              ctx._source.remove('flowstate'); 
+            } 
+            if (ctx._source.containsKey('bpmn')) { 
+              ctx._source.remove('bpmn'); 
+            }
+            for (int i=newTagList.length-1; i&gt;=0; i--) {
+              if (newTagList[i] == tag) {
+                newTagList.remove(i);
+              }
+            }
+            ctxOp = "index";
+            newTagList.add("purged");
+          } else {
+            ctxOp = "delete";
+          }
+        }
+      }
+    }
+  }
+}
+
+if (ctxOp != "noop") {
+    boolean removePurgeTag = true;
+    for (tag in newTagList) {
+        if (tag.startsWith("purge:")) {
+            removePurgeTag = false;
+            break; 
+        }
+    }
+    if (removePurgeTag) {
+        for (int i=newTagList.length-1; i&gt;=0; i--) {
+            if (newTagList[i] == "purge") {
+                newTagList.remove(i);
+            }
+        }
+    }
+}
+
+newTagList = newTagList.stream().distinct().collect(Collectors.toList());
+ctx._source.tag = newTagList;
+ctx.op = ctxOp;
+`;
+
+next(null, painlessScript);</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_1srhrel" sourceRef="generateScript" targetRef="setQuery" />
+    <bpmn:scriptTask id="setQuery" name="Set Elasticsearch query" scriptFormat="js" camunda:resultVariable="elasticQuery">
+      <bpmn:incoming>Flow_1srhrel</bpmn:incoming>
+      <bpmn:outgoing>Flow_00ztnc5</bpmn:outgoing>
+      <bpmn:script>next(null,
+{
+  "bool": {
+    "must": [
+      {
+        "term": {
+          "workflow": "my-workflow"
+        }
+      },
+      {
+        "wildcard": {
+          "tag": "purge:*"
+        }
+      },
+      {
+        "exists": {
+          "field": "enddate"
+        }
+      }
+    ]
+  }
+});</bpmn:script>
+    </bpmn:scriptTask>
+    <bpmn:sequenceFlow id="Flow_00ztnc5" sourceRef="setQuery" targetRef="purgeProcesses" />
+    <bpmn:textAnnotation id="TextAnnotation_058q3or">
+      <bpmn:text>Update with correct index prefix</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Association_13p513w" sourceRef="purgeProcesses" targetRef="TextAnnotation_058q3or" />
+    <bpmn:textAnnotation id="TextAnnotation_11i5ajd">
+      <bpmn:text>Update with correct query</bpmn:text>
+    </bpmn:textAnnotation>
+    <bpmn:association id="Association_19n002b" sourceRef="setQuery" targetRef="TextAnnotation_11i5ajd" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_1">
+    <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="onify-purge-processes-by-elastic-query">
+      <bpmndi:BPMNShape id="TextAnnotation_058q3or_di" bpmnElement="TextAnnotation_058q3or">
+        <dc:Bounds x="700" y="80" width="140" height="40" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="TextAnnotation_11i5ajd_di" bpmnElement="TextAnnotation_11i5ajd">
+        <dc:Bounds x="470" y="84" width="170" height="31" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="StartEvent_1" bioc:stroke="#205022" bioc:fill="#c8e6c9" color:background-color="#c8e6c9" color:border-color="#205022">
+        <dc:Bounds x="152" y="189" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="158" y="232" width="25" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_1l46v5i_di" bpmnElement="generateScript">
+        <dc:Bounds x="260" y="167" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_0nxrkvb_di" bpmnElement="Event_0nxrkvb" bioc:stroke="#831311" bioc:fill="#ffcdd2" color:background-color="#ffcdd2" color:border-color="#831311">
+        <dc:Bounds x="772" y="189" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="780" y="232" width="20" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_0m4v8ki" bpmnElement="purgeProcesses">
+        <dc:Bounds x="600" y="167" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="BPMNShape_0q7kjjr" bpmnElement="setQuery">
+        <dc:Bounds x="430" y="167" width="100" height="80" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Association_13p513w_di" bpmnElement="Association_13p513w">
+        <di:waypoint x="686" y="167" />
+        <di:waypoint x="728" y="120" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Association_19n002b_di" bpmnElement="Association_19n002b">
+        <di:waypoint x="495" y="167" />
+        <di:waypoint x="514" y="115" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_02jrzcg_di" bpmnElement="Flow_02jrzcg">
+        <di:waypoint x="188" y="207" />
+        <di:waypoint x="260" y="207" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1srhrel_di" bpmnElement="Flow_1srhrel">
+        <di:waypoint x="360" y="207" />
+        <di:waypoint x="430" y="207" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_08vgf1v_di" bpmnElement="Flow_08vgf1v">
+        <di:waypoint x="700" y="207" />
+        <di:waypoint x="772" y="207" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_00ztnc5_di" bpmnElement="Flow_00ztnc5">
+        <di:waypoint x="530" y="207" />
+        <di:waypoint x="600" y="207" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>
