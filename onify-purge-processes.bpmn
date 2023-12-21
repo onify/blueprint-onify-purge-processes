@@ -16,6 +16,12 @@ next();</camunda:script>
           <camunda:outputParameter name="processes">${content.output.body.records}</camunda:outputParameter>
           <camunda:outputParameter name="nextUrl">${content.output.body.meta.nexturl}</camunda:outputParameter>
           <camunda:outputParameter name="meta">${content.output.body.meta}</camunda:outputParameter>
+          <camunda:outputParameter name="process">
+            <camunda:map>
+              <camunda:entry key="tag">purge</camunda:entry>
+              <camunda:entry key="tag">purge:1:completed</camunda:entry>
+            </camunda:map>
+          </camunda:outputParameter>
         </camunda:inputOutput>
         <camunda:connector>
           <camunda:inputOutput>
@@ -98,7 +104,7 @@ if (purgeTag) {
 next();</camunda:script>
             </camunda:executionListener>
           </bpmn:extensionElements>
-          <bpmn:incoming>Flow_0a92qw3</bpmn:incoming>
+          <bpmn:incoming>Flow_0h6c2ub</bpmn:incoming>
         </bpmn:endEvent>
         <bpmn:exclusiveGateway id="Gateway_0bgqho1" name="Time to purge?" default="Flow_0x3heb9">
           <bpmn:incoming>Flow_0vovp9i</bpmn:incoming>
@@ -121,6 +127,11 @@ next();</camunda:script>
               <camunda:inputOutput>
                 <camunda:inputParameter name="url">/admin/processes/${environment.variables.content.input.process.id}</camunda:inputParameter>
                 <camunda:inputParameter name="method">DELETE</camunda:inputParameter>
+                <camunda:inputParameter name="query">
+                  <camunda:map>
+                    <camunda:entry key="refresh">${true}</camunda:entry>
+                  </camunda:map>
+                </camunda:inputParameter>
               </camunda:inputOutput>
               <camunda:connectorId>onifyApiRequest</camunda:connectorId>
             </camunda:connector>
@@ -158,41 +169,52 @@ next();</camunda:script>
           </bpmn:extensionElements>
           <bpmn:incoming>Flow_1bi5szj</bpmn:incoming>
         </bpmn:endEvent>
-        <bpmn:sequenceFlow id="Flow_0h6c2ub" sourceRef="deleteProcess" targetRef="Event_0fgzkg5" />
+        <bpmn:sequenceFlow id="Flow_0h6c2ub" sourceRef="deleteProcess" targetRef="endDeleted" />
         <bpmn:sequenceFlow id="Flow_0gokgh2" name="Yes" sourceRef="Gateway_0bgqho1" targetRef="Gateway_1bvj2w3">
-          <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="js">if (!environment.variables.content.input.process.enddate || !environment.output.purgeSettings?.timer) {
-  next(null, false);
-} 
+          <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="js">next(null, timeToPurge());
 
-if (environment.output.purgeSettings.timer == 0) {
-  next(null, true);
-}
+function timeToPurge() {
+  const flow = environment.variables.content.input.process;
+  const timer = environment.output.purgeSettings?.timer;
 
-const currentDateTime = new Date();
-const hoursDiff = (currentDateTime - new Date(environment.variables.content.input.process.enddate)) / 3600000;
+  if (!flow.enddate || !timer) {
+    return false;
+  }
 
-if (hoursDiff &gt;= environment.output.purgeSettings.timer) {
-  next(null, true);
-} else {
-  next(null, false);
+  if (timer == 0) {
+    return true;
+  }
+
+  const currentDateTime = new Date();
+  const hoursDiff = (currentDateTime - new Date(flow.enddate)) / 3600000;
+
+  if (hoursDiff &gt;= timer) {
+    return true;
+  }
+
+  return false;
 }</bpmn:conditionExpression>
         </bpmn:sequenceFlow>
         <bpmn:sequenceFlow id="Flow_0x3heb9" name="No" sourceRef="Gateway_0bgqho1" targetRef="endDoNotPurge" />
         <bpmn:sequenceFlow id="Flow_0a3akmj" name="No" sourceRef="Gateway_1bvj2w3" targetRef="endDoNotPurge" />
         <bpmn:sequenceFlow id="Flow_12d2xv5" name="Yes" sourceRef="Gateway_1bvj2w3" targetRef="Gateway_014hkqm">
-          <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="js">if (!environment.output.purgeSettings?.status) {
-  next(null, false);
-} 
+          <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression" language="js">next(null, statusToPurge());
 
-const statuses_settings = environment.output.purgeSettings.status.map(status =&gt; status .toLowerCase());
+function statusToPurge() {
+  const purgeSettings = environment.output.purgeSettings;
+  if (!purgeSettings?.status) {
+    return false;
+  }
 
-if (statuses_settings .includes(environment.variables.content.input.process.status.name.toLowerCase())
-) {
-  next(null, true);
-} else {
-  next(null, false);
-}
-</bpmn:conditionExpression>
+  const flow = environment.variables.content.input.process;
+  const statuses_settings = purgeSettings.status.map(status =&gt; status.toLowerCase());
+
+  if (statuses_settings.includes(flow.status?.name.toLowerCase())) {
+    return true;
+  }
+
+  return false;
+}</bpmn:conditionExpression>
         </bpmn:sequenceFlow>
         <bpmn:sequenceFlow id="Flow_132dzeu" name="Full" sourceRef="Gateway_014hkqm" targetRef="deleteProcess" />
         <bpmn:sequenceFlow id="Flow_0s5ospf" name="Data" sourceRef="Gateway_014hkqm" targetRef="deleteProcessData">
@@ -233,20 +255,19 @@ next(null, updatedTags);</bpmn:script>
           <bpmn:outgoing>Flow_1bi5szj</bpmn:outgoing>
         </bpmn:serviceTask>
         <bpmn:sequenceFlow id="Flow_1bi5szj" sourceRef="Activity_0wepmzg" targetRef="endPurgeData" />
-        <bpmn:intermediateCatchEvent id="Event_0fgzkg5" name="Wait 0,5 sec">
-          <bpmn:incoming>Flow_0h6c2ub</bpmn:incoming>
-          <bpmn:outgoing>Flow_0a92qw3</bpmn:outgoing>
-          <bpmn:timerEventDefinition id="TimerEventDefinition_19g57sr">
-            <bpmn:timeDuration xsi:type="bpmn:tFormalExpression">PT0.5S</bpmn:timeDuration>
-          </bpmn:timerEventDefinition>
-        </bpmn:intermediateCatchEvent>
-        <bpmn:sequenceFlow id="Flow_0a92qw3" sourceRef="Event_0fgzkg5" targetRef="endDeleted" />
       </bpmn:subProcess>
       <bpmn:sequenceFlow id="Flow_1jvy0tk" sourceRef="getPurgeTags" targetRef="loopPurgeTags" />
       <bpmn:endEvent id="endPurgeProcess" name="Process purge finished">
-        <bpmn:incoming>Flow_03ery5t</bpmn:incoming>
+        <bpmn:incoming>Flow_106thrw</bpmn:incoming>
       </bpmn:endEvent>
-      <bpmn:sequenceFlow id="Flow_03ery5t" sourceRef="loopPurgeTags" targetRef="endPurgeProcess" />
+      <bpmn:sequenceFlow id="Flow_03ery5t" sourceRef="loopPurgeTags" targetRef="Activity_11yvo7m" />
+      <bpmn:sequenceFlow id="Flow_106thrw" sourceRef="Activity_11yvo7m" targetRef="endPurgeProcess" />
+      <bpmn:scriptTask id="Activity_11yvo7m" name="Reset output" scriptFormat="js">
+        <bpmn:incoming>Flow_03ery5t</bpmn:incoming>
+        <bpmn:outgoing>Flow_106thrw</bpmn:outgoing>
+        <bpmn:script>environment.output = {};
+next();</bpmn:script>
+      </bpmn:scriptTask>
       <bpmn:textAnnotation id="TextAnnotation_1a86zm9">
         <bpmn:text>Processes can have multiple purge types</bpmn:text>
       </bpmn:textAnnotation>
@@ -361,6 +382,15 @@ next();</camunda:script>
         <dc:Bounds x="280" y="300" width="100" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_018jj10_di" bpmnElement="endPurgeProcess" bioc:stroke="#831311" bioc:fill="#ffcdd2" color:background-color="#ffcdd2" color:border-color="#831311">
+        <dc:Bounds x="2442" y="322" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="2425" y="365" width="71" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Activity_02s0jca_di" bpmnElement="Activity_11yvo7m">
+        <dc:Bounds x="2280" y="300" width="100" height="80" />
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_133813l_di" bpmnElement="loopPurgeTags" isExpanded="true">
         <dc:Bounds x="470" y="80" width="1760" height="550" />
         <bpmndi:BPMNLabel />
@@ -376,9 +406,9 @@ next();</camunda:script>
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="BPMNShape_1xnzox0" bpmnElement="endDeleted" bioc:stroke="#831311" bioc:fill="#ffcdd2" color:background-color="#ffcdd2" color:border-color="#831311">
-        <dc:Bounds x="1932" y="222" width="36" height="36" />
+        <dc:Bounds x="1782" y="222" width="36" height="36" />
         <bpmndi:BPMNLabel>
-          <dc:Bounds x="1911" y="265" width="80" height="14" />
+          <dc:Bounds x="1762" y="265" width="79" height="14" />
         </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="BPMNShape_1v5o90k" bpmnElement="Gateway_0bgqho1" isMarkerVisible="true">
@@ -426,12 +456,6 @@ next();</camunda:script>
       <bpmndi:BPMNShape id="BPMNShape_1ri6lom" bpmnElement="Activity_0wepmzg">
         <dc:Bounds x="1900" y="320" width="100" height="80" />
         <bpmndi:BPMNLabel />
-      </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="BPMNShape_05x7xn8" bpmnElement="Event_0fgzkg5">
-        <dc:Bounds x="1782" y="222" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="1770" y="265" width="61" height="14" />
-        </bpmndi:BPMNLabel>
       </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_0bws9gt_di" bpmnElement="Flow_0bws9gt">
         <di:waypoint x="688" y="240" />
@@ -502,16 +526,6 @@ next();</camunda:script>
         <di:waypoint x="2000" y="360" />
         <di:waypoint x="2052" y="360" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Flow_0a92qw3_di" bpmnElement="Flow_0a92qw3">
-        <di:waypoint x="1818" y="240" />
-        <di:waypoint x="1932" y="240" />
-      </bpmndi:BPMNEdge>
-      <bpmndi:BPMNShape id="Event_018jj10_di" bpmnElement="endPurgeProcess" bioc:stroke="#831311" bioc:fill="#ffcdd2" color:background-color="#ffcdd2" color:border-color="#831311">
-        <dc:Bounds x="2332" y="322" width="36" height="36" />
-        <bpmndi:BPMNLabel>
-          <dc:Bounds x="2314" y="365" width="72" height="27" />
-        </bpmndi:BPMNLabel>
-      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="TextAnnotation_1a86zm9_di" bpmnElement="TextAnnotation_1a86zm9">
         <dc:Bounds x="210" y="110" width="150" height="40" />
         <bpmndi:BPMNLabel />
@@ -526,11 +540,15 @@ next();</camunda:script>
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Flow_03ery5t_di" bpmnElement="Flow_03ery5t">
         <di:waypoint x="2230" y="340" />
-        <di:waypoint x="2332" y="340" />
+        <di:waypoint x="2280" y="340" />
       </bpmndi:BPMNEdge>
       <bpmndi:BPMNEdge id="Association_1l3hf4f_di" bpmnElement="Association_1l3hf4f">
         <di:waypoint x="317" y="300" />
         <di:waypoint x="268" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_106thrw_di" bpmnElement="Flow_106thrw">
+        <di:waypoint x="2380" y="340" />
+        <di:waypoint x="2442" y="340" />
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
