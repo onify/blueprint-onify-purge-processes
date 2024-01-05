@@ -11,7 +11,7 @@
         </camunda:inputOutput>
         <camunda:connector>
           <camunda:inputOutput>
-            <camunda:inputParameter name="url">/admin/workflows?pagesize=1000&amp;query=key:my-workflow</camunda:inputParameter>
+            <camunda:inputParameter name="url">/admin/workflows?pagesize=1000&amp;query=tag:purge</camunda:inputParameter>
           </camunda:inputOutput>
           <camunda:connectorId>onifyApiRequest</camunda:connectorId>
         </camunda:connector>
@@ -37,6 +37,7 @@
       </bpmn:endEvent>
       <bpmn:sequenceFlow id="Flow_0ywl4jh" sourceRef="generateScript" targetRef="updateProcesses" />
       <bpmn:scriptTask id="generateScript" name="Generate painless script" scriptFormat="js" camunda:resultVariable="painlessScript">
+        <bpmn:extensionElements />
         <bpmn:incoming>Flow_0xy7yqi</bpmn:incoming>
         <bpmn:outgoing>Flow_0ywl4jh</bpmn:outgoing>
         <bpmn:script>const strTags = environment.variables.content.workflow.tag.map(s =&gt; `"${s}"`).join(", ");
@@ -60,7 +61,7 @@ next(null, painlessScript);</bpmn:script>
               <camunda:inputParameter name="method">POST</camunda:inputParameter>
               <camunda:inputParameter name="query">
                 <camunda:map>
-                  <camunda:entry key="parameters">/dev-process/_update_by_query?conflicts=proceed</camunda:entry>
+                  <camunda:entry key="parameters">/dev-process/_update_by_query?conflicts=proceed&amp;requests_per_second=500&amp;scroll_size=500</camunda:entry>
                 </camunda:map>
               </camunda:inputParameter>
               <camunda:inputParameter name="payload">
@@ -83,12 +84,13 @@ next(null, painlessScript);</bpmn:script>
 };
 next(null, payload);</camunda:script>
               </camunda:inputParameter>
+              <camunda:inputParameter name="throwHttpErrors">${true}</camunda:inputParameter>
             </camunda:inputOutput>
             <camunda:connectorId>onifyElevatedApiRequest</camunda:connectorId>
           </camunda:connector>
           <camunda:executionListener event="end">
             <camunda:script scriptFormat="js">const strTags = environment.variables.content.workflow.tag.map(s =&gt; `"${s}"`).join(", ");
-console.log(`DEBUG: Replaced tags (${strTags}) from workflow (${environment.variables.content.workflow.key}) to processes. Done updating ${content.output.body.updated} processes.`);
+console.log(`DEBUG: Copy tags (${strTags}) from workflow (${environment.variables.content.workflow.key}) to processes (total = ${content.output.body.total}, updated = ${content.output.body.updated}, deleted = ${content.output.body.deleted}, noops = ${content.output.body.noops}).`);
 next();</camunda:script>
           </camunda:executionListener>
         </bpmn:extensionElements>
@@ -109,10 +111,6 @@ next();</camunda:script>
   </bpmn:process>
   <bpmndi:BPMNDiagram id="BPMNDiagram_1">
     <bpmndi:BPMNPlane id="BPMNPlane_1" bpmnElement="onify-copy-workflow-tags">
-      <bpmndi:BPMNShape id="TextAnnotation_1e7zbd8_di" bpmnElement="TextAnnotation_1e7zbd8">
-        <dc:Bounds x="190" y="120" width="230" height="30" />
-        <bpmndi:BPMNLabel />
-      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="_BPMNShape_StartEvent_2" bpmnElement="start" bioc:stroke="#205022" bioc:fill="#c8e6c9" color:background-color="#c8e6c9" color:border-color="#205022">
         <dc:Bounds x="152" y="212" width="36" height="36" />
         <bpmndi:BPMNLabel>
@@ -133,28 +131,24 @@ next();</camunda:script>
         <dc:Bounds x="470" y="80" width="610" height="250" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="TextAnnotation_1awingn_di" bpmnElement="TextAnnotation_1awingn">
-        <dc:Bounds x="890" y="130" width="128" height="30" />
-        <bpmndi:BPMNLabel />
-      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Event_136ufim_di" bpmnElement="Event_136ufim">
         <dc:Bounds x="510" y="212" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Event_100xxm3_di" bpmnElement="Event_100xxm3">
+        <dc:Bounds x="992" y="212" width="36" height="36" />
       </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="Activity_1l46v5i_di" bpmnElement="generateScript">
         <dc:Bounds x="600" y="190" width="100" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNShape id="Event_100xxm3_di" bpmnElement="Event_100xxm3">
-        <dc:Bounds x="992" y="212" width="36" height="36" />
-      </bpmndi:BPMNShape>
       <bpmndi:BPMNShape id="BPMNShape_0m4v8ki" bpmnElement="updateProcesses">
         <dc:Bounds x="800" y="190" width="100" height="80" />
         <bpmndi:BPMNLabel />
       </bpmndi:BPMNShape>
-      <bpmndi:BPMNEdge id="Association_00u7ji4_di" bpmnElement="Association_00u7ji4">
-        <di:waypoint x="892" y="190" />
-        <di:waypoint x="924" y="160" />
-      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="TextAnnotation_1awingn_di" bpmnElement="TextAnnotation_1awingn">
+        <dc:Bounds x="890" y="130" width="128" height="30" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_0xy7yqi_di" bpmnElement="Flow_0xy7yqi">
         <di:waypoint x="546" y="230" />
         <di:waypoint x="600" y="230" />
@@ -167,10 +161,14 @@ next();</camunda:script>
         <di:waypoint x="900" y="230" />
         <di:waypoint x="992" y="230" />
       </bpmndi:BPMNEdge>
-      <bpmndi:BPMNEdge id="Association_1ihuinz_di" bpmnElement="Association_1ihuinz">
-        <di:waypoint x="303" y="190" />
-        <di:waypoint x="285" y="150" />
+      <bpmndi:BPMNEdge id="Association_00u7ji4_di" bpmnElement="Association_00u7ji4">
+        <di:waypoint x="892" y="190" />
+        <di:waypoint x="924" y="160" />
       </bpmndi:BPMNEdge>
+      <bpmndi:BPMNShape id="TextAnnotation_1e7zbd8_di" bpmnElement="TextAnnotation_1e7zbd8">
+        <dc:Bounds x="190" y="120" width="230" height="30" />
+        <bpmndi:BPMNLabel />
+      </bpmndi:BPMNShape>
       <bpmndi:BPMNEdge id="Flow_059x372_di" bpmnElement="Flow_059x372">
         <di:waypoint x="188" y="230" />
         <di:waypoint x="270" y="230" />
@@ -182,6 +180,10 @@ next();</camunda:script>
       <bpmndi:BPMNEdge id="Flow_0cy4bbo_di" bpmnElement="Flow_0cy4bbo">
         <di:waypoint x="1080" y="230" />
         <di:waypoint x="1162" y="230" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Association_1ihuinz_di" bpmnElement="Association_1ihuinz">
+        <di:waypoint x="303" y="190" />
+        <di:waypoint x="285" y="150" />
       </bpmndi:BPMNEdge>
     </bpmndi:BPMNPlane>
   </bpmndi:BPMNDiagram>
