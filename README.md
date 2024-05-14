@@ -23,7 +23,8 @@ Each process that should be purged needs the following tags:
 * `purge` - This is required to be part of the purge process
 * `purge:{hours}:{status}:{type}` - This is the part where you specify when and how a process should be purged. `status` is a list of statuses that is separated with a comma.
 
-> Note: The hours is calculated by the enddate. This means that processes missing enddate will not be purged.
+> Important: The hours is calculated by the enddate. **This means that processes missing enddate (eg. Running) will not be purged.**
+
 > Note: Setting `hours` to `0` will purge the process immediately. 
 
 Purge types:
