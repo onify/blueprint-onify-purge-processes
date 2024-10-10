@@ -16,7 +16,7 @@
             <camunda:inputParameter name="method">POST</camunda:inputParameter>
             <camunda:inputParameter name="query">
               <camunda:map>
-                <camunda:entry key="parameters">/dev-process/_update_by_query</camunda:entry>
+                <camunda:entry key="parameters">/onify-process/_update_by_query</camunda:entry>
               </camunda:map>
             </camunda:inputParameter>
             <camunda:inputParameter name="payload">
